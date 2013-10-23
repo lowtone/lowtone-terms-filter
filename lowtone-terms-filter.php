@@ -21,6 +21,7 @@ namespace lowtone\terms\filter {
 	use lowtone\content\packages\Package,
 		lowtone\ui\forms\Form,
 		lowtone\ui\forms\FieldSet,
+		lowtone\ui\forms\Html,
 		lowtone\ui\forms\Input,
 		lowtone\net\URL,
 		lowtone\wp\sidebars\Sidebar,
@@ -34,6 +35,7 @@ namespace lowtone\terms\filter {
 	// Init
 
 	Package::init(array(
+			Package::INIT_PACKAGES => array("lowtone", "lowtone\\wp", "lowtone\\style"),
 			Package::INIT_MERGED_PATH => __NAMESPACE__,
 			Package::INIT_SUCCESS => function() {
 
@@ -139,6 +141,8 @@ namespace lowtone\terms\filter {
 
 				add_action("widgets_init", function() use (&$selectedTerms) {
 
+					wp_enqueue_style("lowtone_style_grid");
+
 					wp_enqueue_script("lowtone_terms_filter_admin", plugins_url("/assets/scripts/jquery.widget-admin.js", __FILE__), array("jquery"));
 					wp_localize_script("lowtone_terms_filter_admin", "lowtone_terms_filter_admin", array(
 							"ajaxurl" => admin_url("admin-ajax.php"),
@@ -169,11 +173,244 @@ namespace lowtone\terms\filter {
 						return ($__postsInQuery[$type] = get_posts($query));
 					};
 
+					$widgetForm = function() {
+						$form = new Form();
+
+						$form
+							->appendChild(
+								$form->createFieldSet(array(
+										FieldSet::PROPERTY_LEGEND => __("Term selection", "lowtone_terms_filter"),
+									))
+									->appendChild(
+										$form->createInput(Input::TYPE_SELECT, array(
+												Input::PROPERTY_NAME => "display_type",
+												Input::PROPERTY_LABEL => __("Display Type", "lowtone_terms_filter"),
+												Input::PROPERTY_VALUE => array("list", "dropdown"),
+												Input::PROPERTY_ALT_VALUE => array(__("List", "lowtone_terms_filter"), __("Dropdown", "lowtone_terms_filter"))
+											))
+									)
+									->appendChild(
+										$form->createInput(Input::TYPE_SELECT, array(
+												Input::PROPERTY_NAME => "query_type",
+												Input::PROPERTY_LABEL => __("Query Type", "lowtone_terms_filter"),
+												Input::PROPERTY_VALUE => array("and", "or"),
+												Input::PROPERTY_ALT_VALUE => array(__("AND", "lowtone_terms_filter"), __("OR", "lowtone_terms_filter"))
+											))
+									)
+							)
+							->appendChild(
+								$form->createFieldSet(array(
+										FieldSet::PROPERTY_LEGEND => __("Sorting", "lowtone_terms_filter"),
+									))
+									->appendChild(
+										$form->createInput(Input::TYPE_SELECT, array(
+												Input::PROPERTY_NAME => "sort_by",
+												Input::PROPERTY_LABEL => __("Sort by", "lowtone_terms_filter"),
+												Input::PROPERTY_VALUE => array("name", "num_products"),
+												Input::PROPERTY_ALT_VALUE => array(__("Name", "lowtone_terms_filter"), __("Number of products", "lowtone_terms_filter")),
+											))
+									)
+									->appendChild(
+										$form->createInput(Input::TYPE_CHECKBOX, array(
+												Input::PROPERTY_NAME => "selected_at_top",
+												Input::PROPERTY_LABEL => __("Move selected terms to top", "lowtone_terms_filter"),
+												Input::PROPERTY_VALUE => "1",
+											))
+									)
+							);
+
+						return $form;
+					};
+
+					$widgetBody = function($instance, &$taxonomy = NULL) use (&$selectedTerms, $postsInQuery) {
+							if (false === ($taxonomy = get_taxonomy($instance["taxonomy"])))
+								return false;
+
+							$selectedTermsForTaxonomy = isset($selectedTerms[$taxonomy->name]) ? $selectedTerms[$taxonomy->name]["terms"] : array();
+
+							$terms = get_terms($taxonomy->name, array("hide_empty" => true));
+
+							$currentTerm = NULL;
+
+							$currentTaxonomy = NULL;
+
+							/*if ($taxonomiesArray && is_tax($taxonomiesArray)) {
+								$queriedObject = get_queried_object();
+
+								$currentTerm = $queriedObject->term_id;
+								$currentTaxonomy = $queriedObject->taxonomy;
+							}*/
+
+							// Extend widget info
+
+							$terms = array_map(function($term) use ($instance, $postsInQuery, $taxonomy, $selectedTermsForTaxonomy, $currentTerm) {
+
+									// Skip the current term
+									
+									if ($currentTerm == $term->term_id)
+										return false;
+
+									// Get post IDs for term
+
+									$transientName = "wc_ln_count_" . md5(sanitize_key($taxonomy->query_var) . sanitize_key($term->term_id));
+
+									if (false === ($postsInTerm = get_transient($transientName))) 
+										set_transient($transientName, ($postsInTerm = get_objects_in_term($term->term_id, $taxonomy->query_var)));
+
+									// Check if the term is selected
+
+									$selected = in_array($term->term_id, $selectedTermsForTaxonomy);
+
+									$term->selected = $selected;
+
+									// Term count
+									
+									$postCount = count($postsInTerm);
+
+									switch ($instance["query_type"]) {
+										case "and":
+											$postCount = sizeof(array_intersect($postsInTerm, $postsInQuery("filtered")));
+
+											break;
+
+										default:
+											$postCount = sizeof(array_intersect($postsInTerm, $postsInQuery()));
+
+									}
+
+									if ($postCount < 1 && !$selected)
+										return false;
+
+									$term->post_count = $postCount;
+
+									return $term;
+								}, $terms);
+
+							$terms = array_filter($terms);
+
+							if (count($terms) < 1) 
+								return false;
+							
+							/**
+							 * Move selected terms to the top of the list.
+							 * @var [type]
+							 */
+							$selectedToTop = function() use (&$terms, $selectedTermsForTaxonomy) {
+								$top = array();
+								$bottom = array();
+
+								foreach ($terms as $term) {
+									if ($term->selected)
+										$top[] = $term;
+									else 
+										$bottom[] = $term;
+								}
+
+								$terms = array_merge($top, $bottom);
+							};
+
+							$widgetBody = "";
+
+							switch ($instance["display_type"]) {
+								case "dropdown":
+									break;
+
+								default:
+									$widgetBody .= '<ul>';
+
+									if (isset($instance["selected_at_top"]) && $instance["selected_at_top"]) 
+										$selectedToTop();
+
+									foreach ($terms as $term) {
+
+										// Create link
+
+										if (defined("SHOP_IS_ON_FRONT")) 
+											$link = home_url();
+										/*elseif (is_post_type_archive("product") || is_page(woocommerce_get_page_id("shop"))) 
+											$link = get_post_type_archive_link("product");*/
+										else 
+											$link = get_term_link(get_query_var("term"), get_query_var("taxonomy"));
+
+										$link = URL::fromString($link);
+
+										// Build query
+
+										$query = filterArgs();
+
+										if (get_search_query())
+											$query["s"] = get_search_query();
+
+										$filterArg = "filter_" . $taxonomy->query_var;
+										$queryTypeArg = "query_type_" . $taxonomy->query_var;
+
+										$currentFilter = isset($_GET[$filterArg]) && ($currentFilter = explode(",", $_GET[$filterArg])) ? $currentFilter : array();
+
+										$currentFilter = array_map("esc_attr", $currentFilter);
+
+										$class = "";
+
+										if ($term->selected) {
+											$currentFilter = array_diff($currentFilter, array($term->term_id));
+
+											$class = 'class="chosen"';
+										} else
+											$currentFilter[] = $term->term_id;
+
+										if ($currentFilter) {
+											asort($currentFilter);
+
+											$query[$filterArg] = implode(",", $currentFilter);
+
+											if ("or" == $instance["query_type"])
+												$query[$queryTypeArg] = "or";
+
+										} else {
+											unset($query[$filterArg]);
+											unset($query[$queryTypeArg]);
+										}
+
+										$link->appendQuery($query);
+
+										$widgetBody .= '<li ' . $class . '>' .
+											(($term->post_count > 0 || $term->selected) 
+												? '<a href="' . esc_url(apply_filters("lowtone_terms_filter_nav_link", $link)) . '">' . $term->name . '</a>'
+												: '<span>' . $term->name . '</span>') .
+											' <small class="count">' . $term->post_count . '</small></li>';
+
+									}
+
+									$widgetBody .= '</ul>';
+							}
+
+							return $widgetBody;
+						};
+
+					$widget = function($args, $instance, $widget) use ($widgetBody) {
+							if (false == ($body = $widgetBody($instance, $taxonomy)))
+								return;
+
+							// Widget output
+
+							$title = isset($instance["title"]) && ($title = trim($instance["title"])) ? $title : $taxonomy->labels->singular_name;
+
+							$title = apply_filters("widget_title", $title, $instance, $widget->id_base);
+
+							echo $args[Sidebar::PROPERTY_BEFORE_WIDGET] . 
+								$args[Sidebar::PROPERTY_BEFORE_TITLE] . $title . $args[Sidebar::PROPERTY_AFTER_TITLE] . 
+								'<div class="widget_body">' . 
+								$body . 
+								'</div>' . 
+								$args[Sidebar::PROPERTY_AFTER_WIDGET];
+						};
+
+					// Single taxonomy widget
+
 					Widget::register(array(
 							Widget::PROPERTY_ID => "lowtone_terms_filter",
 							Widget::PROPERTY_NAME => __("Term Filter", "lowtone_terms_filter"),
 							Widget::PROPERTY_DESCRIPTION => __("Filter posts using a term filter.", "lowtone_terms_filter"),
-							Widget::PROPERTY_FORM => function($instance) {
+							Widget::PROPERTY_FORM => function($instance) use ($widgetForm) {
 								$form = new Form();
 
 								$postTypes = array_map(function($postType) {
@@ -214,218 +451,210 @@ namespace lowtone\terms\filter {
 												Input::PROPERTY_ALT_VALUE => array_values($taxonomies),
 											))
 											->addClass("lowtone_terms_filter taxonomy")
-									)
+									);
+
+								foreach ($widgetForm()->getChildren() as $child)
+									$form->appendChild($child);
+
+								return $form;
+							},
+							Widget::PROPERTY_WIDGET => $widget,
+						));
+
+					// Multiple taxonomies
+					
+					Widget::register(array(
+							Widget::PROPERTY_ID => "lowtone_terms_filters",
+							Widget::PROPERTY_NAME => __("Term Filters", "lowtone_terms_filter"),
+							Widget::PROPERTY_DESCRIPTION => __("Automatically create filters for multiple taxonomies.", "lowtone_terms_filter"),
+							Widget::PROPERTY_FORM => function($instance) use ($widgetForm) {
+								$form = new Form();
+
+								$postTypes = array_map(function($postType) {
+										return $postType->labels->singular_name ?: $postType->label;
+									}, postTypes());
+
+								$postTypes = array("" => __("Automatically based on query", "lowtone_terms_filter")) + $postTypes;
+
+								$instance = (array) $instance;
+
+								$taxonomyValues = $taxonomyAltValues = array();
+
+								foreach (taxonomies() as $taxonomy) 
+									foreach ($taxonomy->object_type as $postType) {
+										$label = get_post_type_object($postType)->label;
+
+										$taxonomyValues[$label][$taxonomy->name] = $taxonomy->name;
+										$taxonomyAltValues[$label][$taxonomy->name] = $taxonomy->label;
+									}
+
+								$form
 									->appendChild(
-										$form->createInput(Input::TYPE_SELECT, array(
-												Input::PROPERTY_NAME => "display_type",
-												Input::PROPERTY_LABEL => __("Display Type", "lowtone_terms_filter"),
-												Input::PROPERTY_VALUE => array("list", "dropdown"),
-												Input::PROPERTY_ALT_VALUE => array(__("List", "lowtone_terms_filter"), __("Dropdown", "lowtone_terms_filter"))
+										$form->createInput(Input::TYPE_TEXT, array(
+												Input::PROPERTY_NAME => "title",
+												Input::PROPERTY_LABEL => __("Title", "lowtone_terms_filter")
 											))
 									)
 									->appendChild(
-										$form->createInput(Input::TYPE_SELECT, array(
-												Input::PROPERTY_NAME => "query_type",
-												Input::PROPERTY_LABEL => __("Query Type", "lowtone_terms_filter"),
-												Input::PROPERTY_VALUE => array("and", "or"),
-												Input::PROPERTY_ALT_VALUE => array(__("AND", "lowtone_terms_filter"), __("OR", "lowtone_terms_filter"))
+										$form
+											->createInput(Input::TYPE_SELECT, array(
+												Input::PROPERTY_NAME => "post_type",
+												Input::PROPERTY_LABEL => __("Post type", "lowtone_terms_filter"),
+												Input::PROPERTY_VALUE => array_keys($postTypes),
+												Input::PROPERTY_ALT_VALUE => array_values($postTypes),
 											))
 									)
 									->appendChild(
 										$form->createFieldSet(array(
-												FieldSet::PROPERTY_LEGEND => __("Sorting", "lowtone_terms_filter"),
+												FieldSet::PROPERTY_LEGEND => __("Taxonomy filter", "lowtone_terms_filter"),
 											))
 											->appendChild(
-												$form->createInput(Input::TYPE_SELECT, array(
-														Input::PROPERTY_NAME => "sort_by",
-														Input::PROPERTY_LABEL => __("Sort by", "lowtone_terms_filter"),
-														Input::PROPERTY_VALUE => array("name", "num_products"),
-														Input::PROPERTY_ALT_VALUE => array(__("Name", "lowtone_terms_filter"), __("Number of products", "lowtone_terms_filter")),
+												$form->createFieldSet(array(
+														FieldSet::PROPERTY_ELEMENT_NAME => "div",
+														FieldSet::PROPERTY_CLASS => "one-half column"
+													))
+													->appendChild(
+														$form->createInput(Input::TYPE_RADIO, array(
+																Input::PROPERTY_NAME => "taxonomy_filter",
+																Input::PROPERTY_LABEL => __("Hide", "lowtone_terms_filter"),
+																Input::PROPERTY_VALUE => "hide",
+															))
+													)
+											)
+											->appendChild(
+												$form->createFieldSet(array(
+														FieldSet::PROPERTY_ELEMENT_NAME => "div",
+														FieldSet::PROPERTY_CLASS => "one-half column"
+													))
+													->appendChild(
+														$form->createInput(Input::TYPE_RADIO, array(
+																Input::PROPERTY_NAME => "taxonomy_filter",
+																Input::PROPERTY_LABEL => __("Show", "lowtone_terms_filter"),
+																Input::PROPERTY_VALUE => "show",
+															))
+													)
+											)
+											->appendChild($form->createHtml(array(Html::PROPERTY_CLASS => "clear")))
+											->appendChild(
+												$form
+													->createInput(Input::TYPE_SELECT, array(
+														Input::PROPERTY_NAME => "taxonomy_filter_taxonomies",
+														Input::PROPERTY_LABEL => __("Taxonomies", "lowtone_terms_filter"),
+														Input::PROPERTY_VALUE => $taxonomyValues,
+														Input::PROPERTY_ALT_VALUE => $taxonomyAltValues,
+														Input::PROPERTY_MULTIPLE => true,
+														Input::PROPERTY_ATTRIBUTES => array(
+															"style" => "height: 160px"
+														)
+													))
+											)
+									);
+
+								foreach ($widgetForm()->getChildren() as $child)
+									$form->appendChild($child);
+
+								$form
+									->appendChild(
+										$form->createFieldSet(array(
+												FieldSet::PROPERTY_LEGEND => __("Widget layout", "lowtone_terms_filter"),
+											))
+											->appendChild(
+												$form->createInput(Input::TYPE_RADIO, array(
+														Input::PROPERTY_NAME => "widget_layout",
+														Input::PROPERTY_LABEL => __("Single widget", "lowtone_terms_filter"),
+														Input::PROPERTY_VALUE => "single_widget",
 													))
 											)
 											->appendChild(
-												$form->createInput(Input::TYPE_CHECKBOX, array(
-														Input::PROPERTY_NAME => "selected_at_top",
-														Input::PROPERTY_LABEL => __("Move selected terms to top", "lowtone_terms_filter"),
-														Input::PROPERTY_VALUE => "1",
+												$form->createInput(Input::TYPE_RADIO, array(
+														Input::PROPERTY_NAME => "widget_layout",
+														Input::PROPERTY_LABEL => __("Seperate widget for each taxonomy", "lowtone_terms_filter"),
+														Input::PROPERTY_VALUE => "multiple_widgets",
 													))
 											)
-									)
-									->setValues($instance);
+									);
 
 								return $form;
 							},
-							Widget::PROPERTY_WIDGET => function($args, $instance, $widget) use (&$selectedTerms, $postsInQuery) {
-								if (false === ($taxonomy = get_taxonomy($instance["taxonomy"])))
-									return;
+							Widget::PROPERTY_WIDGET => function($args, $instance, $_w) use ($widget, $widgetBody) {
+								$postType = $instance["post_type"];
 
-								$selectedTermsForTaxonomy = isset($selectedTerms[$taxonomy->name]) ? $selectedTerms[$taxonomy->name]["terms"] : array();
+								if (!$postType) {
+									global $wp_query;
 
-								$terms = get_terms($taxonomy->name, array("hide_empty" => true));
+									$postType = "post";
 
-								$currentTerm = NULL;
+									if (is_tax()
+										&& ($taxonomy = get_taxonomy(get_queried_object()->taxonomy))
+										&& ($_pt = reset($taxonomy->object_type))) 
+											$postType = $_pt;
 
-								$currentTaxonomy = NULL;
+								}
 
-								/*if ($taxonomiesArray && is_tax($taxonomiesArray)) {
-									$queriedObject = get_queried_object();
+								$taxonomies = array_filter(taxonomies($postType), function($taxonomy) use ($instance) {
+										$inArray = in_array($taxonomy->name, $instance["taxonomy_filter_taxonomies"]);
 
-									$currentTerm = $queriedObject->term_id;
-									$currentTaxonomy = $queriedObject->taxonomy;
-								}*/
+										return "hide" == $instance["taxonomy_filter"] ? !$inArray : $inArray;
+									});
 
-								// Extend widget info
+								switch ($instance["widget_layout"]) {
+									case "multiple_widgets":
+										$widgets = array();
 
-								$terms = array_map(function($term) use ($instance, $postsInQuery, $taxonomy, $selectedTermsForTaxonomy, $currentTerm) {
+										foreach ($taxonomies as $taxonomy) 
+											$widgets[] = $widget($args, array_merge($instance, array(
+													"post_type" => $postType,
+													"taxonomy" => $taxonomy->name
+												)), $_w);
 
-										// Skip the current term
-										
-										if ($currentTerm == $term->term_id)
-											return false;
+										if (!($widgets = array_filter($widgets)))
+											return;
 
-										// Get post IDs for term
+										echo implode($widgets);
 
-										$transientName = "wc_ln_count_" . md5(sanitize_key($taxonomy->query_var) . sanitize_key($term->term_id));
-
-										if (false === ($postsInTerm = get_transient($transientName))) 
-											set_transient($transientName, ($postsInTerm = get_objects_in_term($term->term_id, $taxonomy->query_var)));
-
-										// Check if the term is selected
-
-										$selected = in_array($term->term_id, $selectedTermsForTaxonomy);
-
-										$term->selected = $selected;
-
-										// Term count
-										
-										$postCount = count($postsInTerm);
-
-										switch ($instance["query_type"]) {
-											case "and":
-												$postCount = sizeof(array_intersect($postsInTerm, $postsInQuery("filtered")));
-
-												break;
-
-											default:
-												$postCount = sizeof(array_intersect($postsInTerm, $postsInQuery()));
-
-										}
-
-										if ($postCount < 1 && !$selected)
-											return false;
-
-										$term->post_count = $postCount;
-
-										return $term;
-									}, $terms);
-
-								$terms = array_filter($terms);
-
-								if (count($terms) < 1) 
-									return;
-
-								// Widget output
-
-								$title = isset($instance["title"]) && ($title = trim($instance["title"])) ? $title : $taxonomy->labels->singular_name;
-
-								$title = apply_filters("widget_title", $title, $instance, $widget->id_base);
-
-								echo $args[Sidebar::PROPERTY_BEFORE_WIDGET] . 
-									$args[Sidebar::PROPERTY_BEFORE_TITLE] . $title . $args[Sidebar::PROPERTY_AFTER_TITLE];
-								
-								/**
-								 * Move selected terms to the top of the list.
-								 * @var [type]
-								 */
-								$selectedToTop = function() use (&$terms, $selectedTermsForTaxonomy) {
-									$top = array();
-									$bottom = array();
-
-									foreach ($terms as $term) {
-										if ($term->selected)
-											$top[] = $term;
-										else 
-											$bottom[] = $term;
-									}
-
-									$terms = array_merge($top, $bottom);
-								};
-
-								switch ($instance["display_type"]) {
-									case "dropdown":
 										break;
 
 									default:
-										echo '<ul>';
+										$body = array();
 
-										if (isset($instance["selected_at_top"]) && $instance["selected_at_top"]) 
-											$selectedToTop();
+										foreach ($taxonomies as $taxonomy) {
+											$_b = $widgetBody(array_merge($instance, array(
+													"post_type" => $postType,
+													"taxonomy" => $taxonomy->name
+												)));
 
-										foreach ($terms as $term) {
+											if (!$_b)
+												continue;
 
-											// Create link
-
-											if (defined("SHOP_IS_ON_FRONT")) 
-												$link = home_url();
-											elseif (is_post_type_archive("product") || is_page(woocommerce_get_page_id("shop"))) 
-												$link = get_post_type_archive_link("product");
-											else 
-												$link = get_term_link(get_query_var("term"), get_query_var("taxonomy"));
-
-											$link = URL::fromString($link);
-
-											// Build query
-
-											$query = filterArgs();
-
-											if (get_search_query())
-												$query["s"] = get_search_query();
-
-											$filterArg = "filter_" . $taxonomy->query_var;
-											$queryTypeArg = "query_type_" . $taxonomy->query_var;
-
-											$currentFilter = isset($_GET[$filterArg]) && ($currentFilter = explode(",", $_GET[$filterArg])) ? $currentFilter : array();
-
-											$currentFilter = array_map("esc_attr", $currentFilter);
-
-											$class = "";
-
-											if ($term->selected) {
-												$currentFilter = array_diff($currentFilter, array($term->term_id));
-
-												$class = 'class="chosen"';
-											} else
-												$currentFilter[] = $term->term_id;
-
-											if ($currentFilter) {
-												asort($currentFilter);
-
-												$query[$filterArg] = implode(",", $currentFilter);
-
-												if ("or" == $instance["query_type"])
-													$query[$queryTypeArg] = "or";
-
-											} else {
-												unset($query[$filterArg]);
-												unset($query[$queryTypeArg]);
-											}
-
-											$link->appendQuery($query);
-
-											echo '<li ' . $class . '>' .
-												(($term->post_count > 0 || $term->selected) 
-													? '<a href="' . esc_url(apply_filters("lowtone_terms_filter_nav_link", $link)) . '">' . $term->name . '</a>'
-													: '<span>' . $term->name . '</span>') .
-												' <small class="count">' . $term->post_count . '</small></li>';
+											$body[] = '<dt>' . $taxonomy->label . '</dt>' . 
+												'<dd>' . $_b . '</dd>';
 
 										}
 
-										echo '</ul>';
-								}
+										if (!$body)
+											return;
 
-								echo $args[Sidebar::PROPERTY_AFTER_WIDGET];
+										$title = sprintf(__("Filter %s", "lowtone_terms_filter"), get_post_type_object($postType)->label);
+
+										$title = apply_filters("widget_title", $title, $instance, $_w->id_base);
+
+										echo $args[Sidebar::PROPERTY_BEFORE_WIDGET] . 
+											$args[Sidebar::PROPERTY_BEFORE_TITLE] . $title . $args[Sidebar::PROPERTY_AFTER_TITLE] . 
+											'<div class="widget_body">' . 
+											'<dl>' . implode($body) . '</dl>' .
+											'</div>' . 
+											$args[Sidebar::PROPERTY_AFTER_WIDGET];
+
+								}
 							},
-							"classname" => "woocommerce widget_layered_nav",
+							Widget::PROPERTY_DEFAULTS => function() {
+								return array(
+										"post_type" => NULL,
+										"taxonomy_filter" => "hide",
+										"taxonomy_filter_taxonomies" => array(),
+										"widget_layout" => "single_widget"
+									);
+							}
 						));
 
 				});
@@ -463,7 +692,7 @@ namespace lowtone\terms\filter {
 		$options = array();
 
 		if (NULL !== $postType)
-			$options["object_type"] = $postType;
+			$options["object_type"] = array($postType);
 
 		return apply_filters("lowtone_terms_filter_taxonomies", array_filter(
 				get_taxonomies($options, "objects"),
