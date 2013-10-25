@@ -39,11 +39,17 @@ namespace lowtone\terms\filter {
 			Package::INIT_MERGED_PATH => __NAMESPACE__,
 			Package::INIT_SUCCESS => function() {
 
+				wp_register_style("lowtone_terms_filter", plugins_url("/assets/styles/filter.css", __FILE__));
+
 				$selectedTerms = NULL;
 
-				add_action("init", function() use (&$selectedTerms) {
-					if (is_admin() || false === is_active_widget(false, false, "lowtone_terms_filter", true))
-						return;
+				add_action("parse_request", function() use (&$selectedTerms) {
+					if (is_admin() 
+						|| (false === is_active_widget(false, false, "lowtone_terms_filter", true)
+							&& false === is_active_widget(false, false, "lowtone_terms_filters", true)))
+								return;
+
+					wp_enqueue_style("lowtone_terms_filter");
 
 					$selectedTerms = NULL;
 
@@ -137,16 +143,18 @@ namespace lowtone\terms\filter {
 						));
 				});
 
-				// Register widget
-
-				add_action("widgets_init", function() use (&$selectedTerms) {
-
-					wp_enqueue_style("lowtone_style_grid");
+				add_action("load-widgets.php", function() {
 
 					wp_enqueue_script("lowtone_terms_filter_admin", plugins_url("/assets/scripts/jquery.widget-admin.js", __FILE__), array("jquery"));
 					wp_localize_script("lowtone_terms_filter_admin", "lowtone_terms_filter_admin", array(
 							"ajaxurl" => admin_url("admin-ajax.php"),
 						));
+
+				});
+
+				// Register widget
+
+				add_action("widgets_init", function() use (&$selectedTerms) {
 
 					$__postsInQuery = array();
 
@@ -173,7 +181,15 @@ namespace lowtone\terms\filter {
 						return ($__postsInQuery[$type] = get_posts($query));
 					};
 
+					/**
+					 * Basic fields for the filter widget form.
+					 * @var Closure
+					 * @return Form Returns a form instance with basic fields 
+					 * for the filter widget.
+					 */
 					$widgetForm = function() {
+						wp_enqueue_style("lowtone_style_grid");
+
 						$form = new Form();
 
 						$form
@@ -222,6 +238,14 @@ namespace lowtone\terms\filter {
 						return $form;
 					};
 
+					/**
+					 * Create the widget body based on the given instance.
+					 * @var Closure
+					 * @param array $instance The widget instance.
+					 * @return string|bool Returns the body for the widget as a
+					 * string or FALSE if there are no terms available for the 
+					 * widget.
+					 */
 					$widgetBody = function($instance, &$taxonomy = NULL) use (&$selectedTerms, $postsInQuery) {
 							if (false === ($taxonomy = get_taxonomy($instance["taxonomy"])))
 								return false;
@@ -293,7 +317,7 @@ namespace lowtone\terms\filter {
 							
 							/**
 							 * Move selected terms to the top of the list.
-							 * @var [type]
+							 * @var Closure
 							 */
 							$selectedToTop = function() use (&$terms, $selectedTermsForTaxonomy) {
 								$top = array();
@@ -386,7 +410,15 @@ namespace lowtone\terms\filter {
 							return $widgetBody;
 						};
 
-					$widget = function($args, $instance, $widget) use ($widgetBody) {
+					/**
+					 * Create output for a single filter widget and add it .
+					 * @var Closure
+					 * @param array $args The settings for the widget.
+					 * @param array $instance The properties for the widget 
+					 * instance.
+					 * @param Widget $widget The widget object.
+					 */
+					$widgetOut = function($args, $instance, $widget) use ($widgetBody) {
 							if (false == ($body = $widgetBody($instance, $taxonomy)))
 								return;
 
@@ -458,7 +490,7 @@ namespace lowtone\terms\filter {
 
 								return $form;
 							},
-							Widget::PROPERTY_WIDGET => $widget,
+							Widget::PROPERTY_WIDGET => $widgetOut,
 						));
 
 					// Multiple taxonomies
@@ -576,7 +608,7 @@ namespace lowtone\terms\filter {
 
 								return $form;
 							},
-							Widget::PROPERTY_WIDGET => function($args, $instance, $_w) use ($widget, $widgetBody) {
+							Widget::PROPERTY_WIDGET => function($args, $instance, $widget) use ($widgetOut, $widgetBody) {
 								$postType = $instance["post_type"];
 
 								if (!$postType) {
@@ -602,14 +634,14 @@ namespace lowtone\terms\filter {
 										$widgets = array();
 
 										foreach ($taxonomies as $taxonomy) 
-											$widgets[] = $widget($args, array_merge($instance, array(
+											$widgets[] = $widgetOut($args, array_merge($instance, array(
 													"post_type" => $postType,
 													"taxonomy" => $taxonomy->name
-												)), $_w);
+												)), $widget);
 
 										if (!($widgets = array_filter($widgets)))
 											return;
-
+ 
 										echo implode($widgets);
 
 										break;
@@ -634,9 +666,11 @@ namespace lowtone\terms\filter {
 										if (!$body)
 											return;
 
-										$title = sprintf(__("Filter %s", "lowtone_terms_filter"), get_post_type_object($postType)->label);
+										$title = isset($instance["title"]) && $instance["title"]
+											? $instance["title"]
+											: sprintf(__("Filter %s", "lowtone_terms_filter"), get_post_type_object($postType)->label);
 
-										$title = apply_filters("widget_title", $title, $instance, $_w->id_base);
+										$title = apply_filters("widget_title", $title, $instance, $widget->id_base);
 
 										echo $args[Sidebar::PROPERTY_BEFORE_WIDGET] . 
 											$args[Sidebar::PROPERTY_BEFORE_TITLE] . $title . $args[Sidebar::PROPERTY_AFTER_TITLE] . 
@@ -674,9 +708,19 @@ namespace lowtone\terms\filter {
 				
 			}
 		));
+				
+	// Register textdomain
+
+	add_action("plugins_loaded", function() {
+		load_plugin_textdomain("lowtone_terms_filter", false, basename(__DIR__) . "/assets/languages");
+	});
 
 	// Functions
 	
+	/**
+	 * Get a list of post types that have one or more taxonomies.
+	 * @return array Returns a list of post objects.
+	 */
 	function postTypes() {
 		return apply_filters("lowtone_terms_filter_post_types", array_filter(
 			get_post_types(array(
@@ -688,6 +732,12 @@ namespace lowtone\terms\filter {
 		));
 	}
 	
+	/**
+	 * Get a list of taxonomies.
+	 * @param string|NULL $postType If a post type is supplied only taxonomies 
+	 * for that post type are returned.
+	 * @return array Returns a list of taxonomies.
+	 */
 	function taxonomies($postType = NULL) {
 		$options = array();
 
@@ -702,6 +752,10 @@ namespace lowtone\terms\filter {
 			), $postType);
 	}
 
+	/**
+	 * Get the filter arguments from the request.
+	 * @return array Returns a list of filter arguments and their values.
+	 */
 	function filterArgs() {
 		$args = array();
 

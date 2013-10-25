@@ -1,0 +1,50 @@
+@charset "UTF-8";
+
+.widget_lowtone_terms_filter,
+	.widget_lowtone_terms_filters {
+		dt {
+			font-weight: bold;
+		}
+
+		dd {
+			margin: 0;
+		}
+
+		ul {
+			padding: 0;
+		}
+
+		li {
+			display: block;
+			line-height: 1.4em;
+			margin: .1em 0;
+		}
+
+		a {
+			display: inline-block;
+		}
+
+		.count {
+			float: right;
+		}
+
+		.chosen {
+			line-height: 1.6em;
+
+			a {
+				background-color: #cae3ab;
+				padding-right: .4em;
+
+				&:before {
+					content: "x";
+					display: inline-block;
+					font: {
+						family: sans-serif;
+						weight: bold;
+					}
+					width: 1.6em;
+					text-align: center;
+				}
+			}
+		}
+	}
