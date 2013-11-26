@@ -353,10 +353,12 @@ namespace lowtone\terms\filter {
 											$link = home_url();
 										/*elseif (is_post_type_archive("product") || is_page(woocommerce_get_page_id("shop"))) 
 											$link = get_post_type_archive_link("product");*/
+										else if (!is_wp_error($termLink = get_term_link(get_query_var("term"), get_query_var("taxonomy"))))
+											$link = $termLink;
 										else 
-											$link = get_term_link(get_query_var("term"), get_query_var("taxonomy"));
+											$link = URL::fromCurrent();
 
-										$link = URL::fromString($link);
+										$link = URL::__cast($link);
 
 										// Build query
 
