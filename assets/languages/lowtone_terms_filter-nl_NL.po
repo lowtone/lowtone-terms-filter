@@ -1,129 +1,137 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Term Filters\n"
-"POT-Creation-Date: 2013-10-24 12:27+0100\n"
-"PO-Revision-Date: 2013-10-24 12:29+0100\n"
-"Last-Translator: Paul van der Meijs <info@lowtone.nl>\n"
+"POT-Creation-Date: 2013-12-16 18:17+0100\n"
+"PO-Revision-Date: 2013-12-16 18:18+0100\n"
+"Last-Translator: Paul van der Meijs <paul@lowtone.nl>\n"
 "Language-Team: Lowtone <info@lowtone.nl>\n"
-"Language: Dutch\n"
+"Language: nl\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 1.5.7\n"
+"X-Generator: Poedit 1.6.2\n"
 "X-Poedit-KeywordsList: __\n"
 "X-Poedit-Basepath: .\n"
 "X-Poedit-SourceCharset: UTF-8\n"
 "X-Poedit-SearchPath-0: ../..\n"
 
-#: ../../lowtone-terms-filter.php:188
+#: ../../lowtone-terms-filter.php:48
+msgid "Show all {num_items} items"
+msgstr "Alle {num_items} weergeven"
+
+#: ../../lowtone-terms-filter.php:49
+msgid "Hide {num_items} items"
+msgstr "{num_items} verbergen"
+
+#: ../../lowtone-terms-filter.php:209
 msgid "Term selection"
 msgstr "Term selectie"
 
-#: ../../lowtone-terms-filter.php:193
+#: ../../lowtone-terms-filter.php:214
 msgid "Display Type"
 msgstr "Weergave"
 
-#: ../../lowtone-terms-filter.php:195
+#: ../../lowtone-terms-filter.php:216
 msgid "List"
 msgstr "Lijst"
 
-#: ../../lowtone-terms-filter.php:195
+#: ../../lowtone-terms-filter.php:216
 msgid "Dropdown"
 msgstr "Dropdown"
 
-#: ../../lowtone-terms-filter.php:201
+#: ../../lowtone-terms-filter.php:222
 msgid "Query Type"
 msgstr "Query type"
 
-#: ../../lowtone-terms-filter.php:203
+#: ../../lowtone-terms-filter.php:224
 msgid "AND"
 msgstr "EN"
 
-#: ../../lowtone-terms-filter.php:203
+#: ../../lowtone-terms-filter.php:224
 msgid "OR"
 msgstr "OF"
 
-#: ../../lowtone-terms-filter.php:209
+#: ../../lowtone-terms-filter.php:230
 msgid "Sorting"
 msgstr "Sortering"
 
-#: ../../lowtone-terms-filter.php:214
+#: ../../lowtone-terms-filter.php:235
 msgid "Sort by"
 msgstr "Sorteer op"
 
-#: ../../lowtone-terms-filter.php:216
+#: ../../lowtone-terms-filter.php:237
 msgid "Name"
 msgstr "Naam"
 
-#: ../../lowtone-terms-filter.php:216
+#: ../../lowtone-terms-filter.php:237
 msgid "Number of products"
 msgstr "Aantal producten"
 
-#: ../../lowtone-terms-filter.php:222
+#: ../../lowtone-terms-filter.php:243
 msgid "Move selected terms to top"
 msgstr "Geselecteerde termen naar boven verplaatsen"
 
-#: ../../lowtone-terms-filter.php:433
+#: ../../lowtone-terms-filter.php:456
 msgid "Term Filter"
 msgstr "Term Filter"
 
-#: ../../lowtone-terms-filter.php:434
+#: ../../lowtone-terms-filter.php:457
 msgid "Filter posts using a term filter."
 msgstr "Filter berichten aan de hand van termen."
 
-#: ../../lowtone-terms-filter.php:454 ../../lowtone-terms-filter.php:517
+#: ../../lowtone-terms-filter.php:477 ../../lowtone-terms-filter.php:540
 msgid "Title"
 msgstr "Titel"
 
-#: ../../lowtone-terms-filter.php:461 ../../lowtone-terms-filter.php:524
+#: ../../lowtone-terms-filter.php:484 ../../lowtone-terms-filter.php:547
 msgid "Post type"
 msgstr "Post type"
 
-#: ../../lowtone-terms-filter.php:471
+#: ../../lowtone-terms-filter.php:494
 msgid "Taxonomy"
 msgstr "Taxonomie"
 
-#: ../../lowtone-terms-filter.php:490
+#: ../../lowtone-terms-filter.php:513
 msgid "Term Filters"
 msgstr "Term Filters"
 
-#: ../../lowtone-terms-filter.php:491
+#: ../../lowtone-terms-filter.php:514
 msgid "Automatically create filters for multiple taxonomies."
 msgstr "Automatisch filters aanmaken voor meerdere taxonomieën"
 
-#: ../../lowtone-terms-filter.php:499
+#: ../../lowtone-terms-filter.php:522
 msgid "Automatically based on query"
 msgstr "Automatisch vaststellen"
 
-#: ../../lowtone-terms-filter.php:531
+#: ../../lowtone-terms-filter.php:554
 msgid "Taxonomy filter"
 msgstr "Taxonomie filter"
 
-#: ../../lowtone-terms-filter.php:541
+#: ../../lowtone-terms-filter.php:564
 msgid "Hide"
 msgstr "Verbergen"
 
-#: ../../lowtone-terms-filter.php:554
+#: ../../lowtone-terms-filter.php:577
 msgid "Show"
 msgstr "Weergeven"
 
-#: ../../lowtone-terms-filter.php:564
+#: ../../lowtone-terms-filter.php:587
 msgid "Taxonomies"
 msgstr "Taxonomieën"
 
-#: ../../lowtone-terms-filter.php:581
+#: ../../lowtone-terms-filter.php:604
 msgid "Widget layout"
 msgstr "Widget layout"
 
-#: ../../lowtone-terms-filter.php:586
+#: ../../lowtone-terms-filter.php:609
 msgid "Single widget"
 msgstr "Enkele widget"
 
-#: ../../lowtone-terms-filter.php:593
+#: ../../lowtone-terms-filter.php:616
 msgid "Seperate widget for each taxonomy"
 msgstr "Aparte widget per taxonomie"
 
-#: ../../lowtone-terms-filter.php:659
+#: ../../lowtone-terms-filter.php:684
 #, php-format
 msgid "Filter %s"
 msgstr "Filter %s"

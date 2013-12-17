@@ -38,8 +38,21 @@ namespace lowtone\terms\filter {
 			Package::INIT_PACKAGES => array("lowtone", "lowtone\\wp", "lowtone\\style"),
 			Package::INIT_MERGED_PATH => __NAMESPACE__,
 			Package::INIT_SUCCESS => function() {
+				
+				// Register textdomain
+				
+				load_plugin_textdomain("lowtone_terms_filter", false, basename(__DIR__) . "/assets/languages");
 
 				wp_register_style("lowtone_terms_filter", plugins_url("/assets/styles/filter.css", __FILE__));
+
+				wp_register_script("lowtone_terms_filter", plugins_url("/assets/scripts/jquery.widget.js", __FILE__));
+				wp_localize_script("lowtone_terms_filter", "lowtone_terms_filter", array(
+						"visible_items" => 15,
+						"locales" => array(
+							"show_text" => __("Show all {num_items} items", "lowtone_terms_filter"),
+							"hide_text" => __("Hide {num_items} items", "lowtone_terms_filter"),
+						)
+					));
 
 				$selectedTerms = NULL;
 
@@ -50,6 +63,8 @@ namespace lowtone\terms\filter {
 								return;
 
 					wp_enqueue_style("lowtone_terms_filter");
+
+					wp_enqueue_script("lowtone_terms_filter");
 
 					$selectedTerms = NULL;
 
@@ -710,12 +725,6 @@ namespace lowtone\terms\filter {
 				
 			}
 		));
-				
-	// Register textdomain
-
-	add_action("plugins_loaded", function() {
-		load_plugin_textdomain("lowtone_terms_filter", false, basename(__DIR__) . "/assets/languages");
-	});
 
 	// Functions
 	
