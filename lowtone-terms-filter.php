@@ -262,6 +262,9 @@ namespace lowtone\terms\filter {
 					 * widget.
 					 */
 					$widgetBody = function($instance, &$taxonomy = NULL) use (&$selectedTerms, $postsInQuery) {
+							if (!apply_filters("lowtone_terms_filter_show", true, $instance))
+								return false;
+
 							if (false === ($taxonomy = get_taxonomy($instance["taxonomy"])))
 								return false;
 
