@@ -2,7 +2,7 @@ $ = @jQuery
 settings = @lowtone_terms_filter
 
 $ ->
-	$widgets = $ '.widget_lowtone_terms_filters'
+	$widgets = $ '.widget_lowtone_terms_filter, .widget_lowtone_terms_filters'
 
 	$widgets.find('ul').each ->
 		$list = $ this
