@@ -22,6 +22,7 @@
 
 		a {
 			display: inline-block;
+			max-width: 90%;
 		}
 
 		.count {
@@ -33,10 +34,10 @@
 
 			a {
 				background-color: #cae3ab;
-				padding-right: .4em;
+				padding: 0 .4em;
 
 				&:before {
-					content: "x";
+					content: "\00d7";
 					display: inline-block;
 					font: {
 						family: sans-serif;
