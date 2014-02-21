@@ -10,7 +10,7 @@
  */
 /**
  * @author Paul van der Meijs <code@lowtone.nl>
- * @copyright Copyright (c) 2013, Paul van der Meijs
+ * @copyright Copyright (c) 2013-2014, Paul van der Meijs
  * @license http://wordpress.lowtone.nl/license/
  * @version 1.0
  * @package wordpress\plugins\lowtone\terms\filter
@@ -43,28 +43,34 @@ namespace lowtone\terms\filter {
 				
 				load_plugin_textdomain("lowtone_terms_filter", false, basename(__DIR__) . "/assets/languages");
 
-				wp_register_style("lowtone_terms_filter", plugins_url("/assets/styles/filter.css", __FILE__));
+				$widgetVisible = false;
 
-				wp_register_script("lowtone_terms_filter", plugins_url("/assets/scripts/jquery.widget.js", __FILE__));
-				wp_localize_script("lowtone_terms_filter", "lowtone_terms_filter", array(
-						"visible_items" => 15,
-						"locales" => array(
-							"show_text" => __("Show all {num_items} items", "lowtone_terms_filter"),
-							"hide_text" => __("Hide {num_items} items", "lowtone_terms_filter"),
-						)
-					));
+				add_action("wp_enqueue_scripts", function() use (&$widgetVisible) {
+					if (!$widgetVisible)
+						return;
+
+					wp_enqueue_style("lowtone_terms_filter", plugins_url("/assets/styles/filter.css", __FILE__));
+
+					wp_enqueue_script("lowtone_terms_filter", plugins_url("/assets/scripts/jquery.widget.js", __FILE__));
+					wp_localize_script("lowtone_terms_filter", "lowtone_terms_filter", array(
+							"visible_items" => 15,
+							"locales" => array(
+								"show_text" => __("Show all {num_items} items", "lowtone_terms_filter"),
+								"hide_text" => __("Hide {num_items} items", "lowtone_terms_filter"),
+							)
+						));
+
+				});
 
 				$selectedTerms = NULL;
 
-				add_action("parse_request", function() use (&$selectedTerms) {
+				add_action("parse_request", function() use (&$widgetVisible, &$selectedTerms) {
 					if (is_admin() 
 						|| (false === is_active_widget(false, false, "lowtone_terms_filter", true)
 							&& false === is_active_widget(false, false, "lowtone_terms_filters", true)))
 								return;
 
-					wp_enqueue_style("lowtone_terms_filter");
-
-					wp_enqueue_script("lowtone_terms_filter");
+					$widgetVisible = true;
 
 					$selectedTerms = NULL;
 
@@ -124,6 +130,9 @@ namespace lowtone\terms\filter {
 						if (!is_array($posts))
 							return;
 
+						if (is_array($prev = $query->get("post__in")) && count($prev) > 0)
+							$posts = array_intersect($posts, $prev);
+
 						$posts[] = 0;
 
 						$query->set("post__in", $posts);
@@ -177,23 +186,7 @@ namespace lowtone\terms\filter {
 						if (isset($__postsInQuery[$type]))
 							return $__postsInQuery[$type];
 
-						$query = $GLOBALS["wp_the_query"]->query_vars;
-
-						switch ($type) {
-							case "unfiltered":
-								unset($query["post__in"]);
-								break;
-						}
-
-						$query = array_merge($query, array(
-								"nopaging" => true,
-								"fields" => 'ids',
-								"no_found_rows" => true,
-								"update_post_meta_cache" => false,
-								"update_post_term_cache" => false
-							));
-
-						return ($__postsInQuery[$type] = get_posts($query));
+						return ($__postsInQuery[$type] = postsInQuery($type));
 					};
 
 					/**
@@ -237,8 +230,8 @@ namespace lowtone\terms\filter {
 										$form->createInput(Input::TYPE_SELECT, array(
 												Input::PROPERTY_NAME => "sort_by",
 												Input::PROPERTY_LABEL => __("Sort by", "lowtone_terms_filter"),
-												Input::PROPERTY_VALUE => array("name", "num_products"),
-												Input::PROPERTY_ALT_VALUE => array(__("Name", "lowtone_terms_filter"), __("Number of products", "lowtone_terms_filter")),
+												Input::PROPERTY_VALUE => array("name", "count"),
+												Input::PROPERTY_ALT_VALUE => array(__("Name", "lowtone_terms_filter"), __("Number of posts", "lowtone_terms_filter")),
 											))
 									)
 									->appendChild(
@@ -270,22 +263,27 @@ namespace lowtone\terms\filter {
 
 							$selectedTermsForTaxonomy = isset($selectedTerms[$taxonomy->name]) ? $selectedTerms[$taxonomy->name]["terms"] : array();
 
-							$terms = get_terms($taxonomy->name, array("hide_empty" => true));
+							$orderBy = $instance["sort_by"];
 
-							$currentTerm = NULL;
+							$order = "ASC";
 
-							$currentTaxonomy = NULL;
+							switch ($orderBy) {
+								case "count":
+									$order = "DESC";
+									break;
+							}
 
-							/*if ($taxonomiesArray && is_tax($taxonomiesArray)) {
-								$queriedObject = get_queried_object();
+							$terms = get_terms($taxonomy->name, array(
+									"hide_empty" => true,
+									"orderby" => $orderBy,
+									"order" => $order,
+								));
 
-								$currentTerm = $queriedObject->term_id;
-								$currentTaxonomy = $queriedObject->taxonomy;
-							}*/
+							$currentTerm = is_tax() ? get_queried_object()->term_id : NULL;
 
 							// Extend widget info
 
-							$terms = array_map(function($term) use ($instance, $postsInQuery, $taxonomy, $selectedTermsForTaxonomy, $currentTerm) {
+							$terms = array_map(function($term) use ($instance, $postsInQuery, $taxonomy, $selectedTermsForTaxonomy, $currentTerm, $selectedTerms) {
 
 									// Skip the current term
 									
@@ -307,18 +305,11 @@ namespace lowtone\terms\filter {
 
 									// Term count
 									
-									$postCount = count($postsInTerm);
-
-									switch ($instance["query_type"]) {
-										case "and":
-											$postCount = sizeof(array_intersect($postsInTerm, $postsInQuery("filtered")));
-
-											break;
-
-										default:
-											$postCount = sizeof(array_intersect($postsInTerm, $postsInQuery()));
-
-									}
+									$postCount = "and" == $instance["query_type"] 
+										|| ($selectedTermsCount = count($selectedTerms)) > 1 
+										|| 1 == $selectedTermsCount && reset(array_keys($selectedTerms)) != $taxonomy->name
+											? sizeof(array_intersect($postsInTerm, $postsInQuery("filtered")))
+											: sizeof(array_intersect($postsInTerm, $postsInQuery()));
 
 									if ($postCount < 1 && !$selected)
 										return false;
@@ -380,7 +371,7 @@ namespace lowtone\terms\filter {
 
 										// Build query
 
-										$query = filterArgs();
+										$query = $link->query();
 
 										if (get_search_query())
 											$query["s"] = get_search_query();
@@ -414,7 +405,7 @@ namespace lowtone\terms\filter {
 											unset($query[$queryTypeArg]);
 										}
 
-										$link->appendQuery($query);
+										$link->query($query);
 
 										$widgetBody .= '<li ' . $class . '>' .
 											(($term->post_count > 0 || $term->selected) 
@@ -534,6 +525,9 @@ namespace lowtone\terms\filter {
 
 								foreach (taxonomies() as $taxonomy) 
 									foreach ($taxonomy->object_type as $postType) {
+										if (!in_array($postType, array_keys($postTypes)))
+											continue;
+
 										$label = get_post_type_object($postType)->label;
 
 										$taxonomyValues[$label][$taxonomy->name] = $taxonomy->name;
@@ -794,6 +788,28 @@ namespace lowtone\terms\filter {
 		}
 
 		return $args;
+	}
+
+	function postsInQuery($type = "unfiltered") {
+		wp_reset_query();
+
+		$query = $GLOBALS["wp_the_query"]->query_vars;
+
+		switch ($type) {
+			case "unfiltered":
+				unset($query["post__in"]);
+				break;
+		}
+
+		$query = array_merge($query, array(
+				"nopaging" => true,
+				"fields" => 'ids',
+				"no_found_rows" => true,
+				"update_post_meta_cache" => false,
+				"update_post_term_cache" => false,
+			));
+
+		return get_posts($query);
 	}
 
 }
