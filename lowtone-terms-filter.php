@@ -25,6 +25,7 @@ namespace lowtone\terms\filter {
 		lowtone\ui\forms\Input,
 		lowtone\net\URL,
 		lowtone\wp\sidebars\Sidebar,
+		lowtone\wp\terms\meta\Meta,
 		lowtone\wp\widgets\simple\Widget;
 
 	// Includes
@@ -189,6 +190,35 @@ namespace lowtone\terms\filter {
 						return ($__postsInQuery[$type] = postsInQuery($type));
 					};
 
+					$__postsInTerm = NULL;
+
+					$postsInTerm = function($termId, $taxonomy) use (&$__postsInTerm) {
+						if (!isset($__postsInTerm))
+							$__postsInTerm = call_user_func(function() {
+								$postsInTerm = array();
+
+								foreach (Meta::find(array(Meta::PROPERTY_META_KEY => "_posts")) as $meta) 
+									$postsInTerm[$meta->{Meta::PROPERTY_TERM_ID}] = $meta->{Meta::PROPERTY_META_VALUE};
+
+								return $postsInTerm;
+							});
+
+						if (!isset($__postsInTerm[$termId]))
+							$__postsInTerm[$termId] = call_user_func(function() use ($termId, $taxonomy) {
+								$postsInTerm = get_objects_in_term($termId, $taxonomy);
+
+								Meta::save(array(
+										Meta::PROPERTY_TERM_ID => $termId,
+										Meta::PROPERTY_META_KEY => "_posts",
+										Meta::PROPERTY_META_VALUE => $postsInTerm,
+									));
+
+								return $postsInTerm;
+							});
+
+						return $__postsInTerm[$termId];
+					};
+
 					/**
 					 * Basic fields for the filter widget form.
 					 * @var Closure
@@ -254,7 +284,7 @@ namespace lowtone\terms\filter {
 					 * string or FALSE if there are no terms available for the 
 					 * widget.
 					 */
-					$widgetBody = function($instance, &$taxonomy = NULL) use (&$selectedTerms, $postsInQuery) {
+					$widgetBody = function($instance, &$taxonomy = NULL) use (&$selectedTerms, $postsInQuery, $postsInTerm) {
 							if (!apply_filters("lowtone_terms_filter_show", true, $instance))
 								return false;
 
@@ -283,7 +313,7 @@ namespace lowtone\terms\filter {
 
 							// Extend widget info
 
-							$terms = array_map(function($term) use ($instance, $postsInQuery, $taxonomy, $selectedTermsForTaxonomy, $currentTerm, $selectedTerms) {
+							$terms = array_map(function($term) use ($instance, $postsInQuery, $postsInTerm, $taxonomy, $selectedTermsForTaxonomy, $currentTerm, $selectedTerms) {
 
 									// Skip the current term
 									
@@ -292,10 +322,12 @@ namespace lowtone\terms\filter {
 
 									// Get post IDs for term
 
-									$transientName = "wc_ln_count_" . md5(sanitize_key($taxonomy->query_var) . sanitize_key($term->term_id));
+									/*$transientName = "wc_ln_count_" . md5(sanitize_key($taxonomy->query_var) . sanitize_key($term->term_id));
 
 									if (false === ($postsInTerm = get_transient($transientName))) 
-										set_transient($transientName, ($postsInTerm = get_objects_in_term($term->term_id, $taxonomy->query_var)));
+										set_transient($transientName, ($postsInTerm = get_objects_in_term($term->term_id, $taxonomy->query_var)));*/
+
+									$__postsInTerm = $postsInTerm($term->term_id, $taxonomy->query_var);
 
 									// Check if the term is selected
 
@@ -308,8 +340,8 @@ namespace lowtone\terms\filter {
 									$postCount = "and" == $instance["query_type"] 
 										|| ($selectedTermsCount = count($selectedTerms)) > 1 
 										|| 1 == $selectedTermsCount && reset(array_keys($selectedTerms)) != $taxonomy->name
-											? sizeof(array_intersect($postsInTerm, $postsInQuery("filtered")))
-											: sizeof(array_intersect($postsInTerm, $postsInQuery()));
+											? sizeof(array_intersect($__postsInTerm, $postsInQuery("filtered")))
+											: sizeof(array_intersect($__postsInTerm, $postsInQuery()));
 
 									if ($postCount < 1 && !$selected)
 										return false;
@@ -358,16 +390,7 @@ namespace lowtone\terms\filter {
 
 										// Create link
 
-										if (defined("SHOP_IS_ON_FRONT")) 
-											$link = home_url();
-										/*elseif (is_post_type_archive("product") || is_page(woocommerce_get_page_id("shop"))) 
-											$link = get_post_type_archive_link("product");*/
-										else if (!is_wp_error($termLink = get_term_link(get_query_var("term"), get_query_var("taxonomy"))))
-											$link = $termLink;
-										else 
-											$link = URL::fromCurrent();
-
-										$link = URL::__cast($link);
+										$link = URL::fromCurrent();
 
 										// Build query
 
@@ -379,7 +402,9 @@ namespace lowtone\terms\filter {
 										$filterArg = "filter_" . $taxonomy->query_var;
 										$queryTypeArg = "query_type_" . $taxonomy->query_var;
 
-										$currentFilter = isset($_GET[$filterArg]) && ($currentFilter = explode(",", $_GET[$filterArg])) ? $currentFilter : array();
+										$currentFilter = isset($query[$filterArg]) && ($currentFilter = explode(",", $query[$filterArg])) 
+											? $currentFilter 
+											: array();
 
 										$currentFilter = array_map("esc_attr", $currentFilter);
 
@@ -707,18 +732,35 @@ namespace lowtone\terms\filter {
 
 				});
 
-				add_filter("woocommerce_layered_nav_link", function($link) {
-					foreach (taxonomies() as $taxonomy) {
-						$arg = "filter_" . $taxonomy->query_var;
+				add_action("set_object_terms", function($objectId, $terms, $ttIds, $taxonomy, $append, $oldTtIds) {
+					global $wpdb;
 
-						if (!isset($_GET[$arg]))
-							continue;
+					$updateTtIds = array_filter(array_map("absint", array_unique(array_merge($ttIds, $oldTtIds))));
 
-						$link = add_query_arg($arg, $_GET[$arg], $link);
-					}
+					if (!$updateTtIds)
+						return;
 
-					return $link;
-				});
+					$query = "SELECT `term_id` 
+						FROM `{$wpdb->term_taxonomy}` 
+						WHERE `term_taxonomy_id` IN (%s)";
+
+					$query = sprintf($query, implode(",", $updateTtIds));
+
+					array_map(function($termId) use ($taxonomy) {
+						var_dump($termId);
+
+						$atts = array(
+								Meta::PROPERTY_TERM_ID => $termId,
+								Meta::PROPERTY_META_KEY => "_posts",
+							);
+
+						$meta = Meta::findOne($atts) ?: new Meta($atts);
+
+						$meta->save(array(
+								Meta::PROPERTY_META_VALUE => get_objects_in_term($termId, $taxonomy),
+							));
+					}, $wpdb->get_col($query));
+				}, 10, 6);
 				
 			}
 		));
